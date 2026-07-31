@@ -28,6 +28,16 @@ db, err := gorm.Open(sqlite.Open(":memory:?_pragma=foreign_keys(1)"), &gorm.Conf
 ```
 More info: [https://www.sqlite.org/foreignkeys.html](https://www.sqlite.org/foreignkeys.html)
 
+# Upstream parity
+This driver tracks [go-gorm/sqlite](https://github.com/go-gorm/sqlite). The last upstream commit merged here is [525c431](https://github.com/go-gorm/sqlite/commit/525c4315a871b2463d75eadac28093149551dba3). Upstream behaviour fixes get ported, so migration and DDL parsing behave the same on both drivers.
+
+Three differences are deliberate and stay:
+- the SQLite backend is pure-Go, so the driver imports `github.com/glebarez/go-sqlite` and `modernc.org/sqlite` rather than `github.com/mattn/go-sqlite3`
+- `DriverName` defaults to `sqlite`, not upstream's `sqlite3`
+- `Translate` reads the SQLite extended result code off the driver error, rather than marshalling the error to JSON and matching on field names
+
+Anything that does not depend on the backend goes upstream first and comes back here as a port. First one: [go-gorm/sqlite#247](https://github.com/go-gorm/sqlite/pull/247).
+
 # FAQ
 ## How is this better than standard GORM SQLite driver?
 The [standard GORM driver for SQLite](https://github.com/go-gorm/sqlite) has one major drawback: it is based on a [Go-bindings of SQLite C-source](https://github.com/mattn/go-sqlite3) (this is called [cgo](https://go.dev/blog/cgo)). This fact imposes following restrictions on Go developers:
