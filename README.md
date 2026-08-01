@@ -37,8 +37,9 @@ The [standard GORM driver for SQLite](https://github.com/go-gorm/sqlite) has one
 
 ## Is this tested good ?
 Yes, The CI pipeline of this driver employs [whole test base](https://github.com/go-gorm/gorm/tree/master/tests) of GORM, which includes more than **12k** tests. Testing is run against latest major releases of Go:
-- 1.18
-- 1.19
+- 1.22
+- 1.23
+- 1.24
 
 In following environments:
 - Linux
