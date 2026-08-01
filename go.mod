@@ -1,4 +1,4 @@
-module github.com/glebarez/sqlite
+module github.com/qist/sqlite
 
 go 1.18
 

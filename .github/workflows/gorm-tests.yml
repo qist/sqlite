@@ -13,7 +13,7 @@ jobs:
   gorm-test:
     strategy:
       matrix:
-        go: ['1.20','1.19','1.18']
+        go: ['1.21', '1.20', '1.19']
         platform: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
 
@@ -29,7 +29,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         path: sqlite
-        
+
     - name: Check out GORM repo
       uses: actions/checkout@v4
       with:
@@ -46,27 +46,31 @@ jobs:
       working-directory: ./gorm/tests
       shell: bash
       # note portable syntax of sed (both GNU and BSD version work with -i.bak cheat, see https://stackoverflow.com/a/44864004
+      # the sqlite checkout is at ../sqlite (one level up from gorm/tests)
       run: |
         sed -i.bak '/gorm.io\/driver\/sqlite/d' go.mod
-        echo "replace github.com/glebarez/sqlite => ../../sqlite/" >> go.mod
-        sed -i.bak 's:gorm.io/driver/sqlite:github.com/glebarez/sqlite:g' tests_test.go
+        echo "replace github.com/qist/sqlite => ../sqlite/" >> go.mod
+        sed -i.bak 's:gorm.io/driver/sqlite:github.com/qist/sqlite:g' tests_test.go
         go mod tidy
         cat go.mod
 
     - name: run gorm tests
       working-directory: ./gorm/tests
       shell: bash
-      run: go test -race -v -count=1 ./... 2>&1 > ${{ runner.os }}-${{ matrix.go }}-tests.out
+      # normalize artifact file name so the badge job can find it reliably
+      run: |
+        OUT="tests-${{ matrix.platform }}-${{ matrix.go }}.out"
+        go test -race -v -count=1 ./... 2>&1 | tee "$OUT"
 
     - name: view failed tests result
       if: ${{ failure() }}
       working-directory: ./gorm/tests
       shell: bash
-      run: grep FAIL -A10 -B3 ${{ runner.os }}-${{ matrix.go }}-tests.out || true
+      run: grep FAIL -A10 -B3 tests-${{ matrix.platform }}-${{ matrix.go }}.out || true
 
     - name: save tests results
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4 
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ runner.os }}-${{ matrix.go }}-tests.out
-        path: ./gorm/tests/${{ runner.os }}-${{ matrix.go }}-tests.out
+        name: tests-${{ matrix.platform }}-${{ matrix.go }}
+        path: ./gorm/tests/tests-${{ matrix.platform }}-${{ matrix.go }}.out
