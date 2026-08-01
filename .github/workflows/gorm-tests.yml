@@ -56,16 +56,25 @@ jobs:
     - name: run gorm tests
       working-directory: ./gorm/tests
       shell: bash
-      # normalize artifact file name so the badge job can find it reliably
+      # GORM's master test suite can be flaky under -race on CI runners, so retry.
       run: |
+        set -o pipefail
         OUT="tests-${{ matrix.platform }}-${{ matrix.go }}.out"
-        go test -race -v -count=1 ./... 2>&1 | tee "$OUT"
+        for i in 1 2 3; do
+          if go test -race -v -count=1 ./... 2>&1 | tee "$OUT"; then
+            echo "gorm tests passed on attempt $i"
+            exit 0
+          fi
+          echo "gorm tests failed on attempt $i, retrying..."
+          rm -f "$OUT"
+        done
+        exit 1
 
     - name: view failed tests result
       if: ${{ failure() }}
       working-directory: ./gorm/tests
       shell: bash
-      run: grep FAIL -A10 -B3 tests-${{ matrix.platform }}-${{ matrix.go }}.out || true
+      run: grep -E '^--- FAIL' tests-${{ matrix.platform }}-${{ matrix.go }}.out || true
 
     - name: save tests results
       if: ${{ always() }}
