@@ -45,7 +45,7 @@ jobs:
       # the sqlite checkout is at ../sqlite (one level up from gorm/tests)
       run: |
         sed -i.bak '/gorm.io\/driver\/sqlite/d' go.mod
-        echo "replace github.com/qist/sqlite => ../sqlite/" >> go.mod
+        echo "replace github.com/qist/sqlite => ../../sqlite/" >> go.mod
         sed -i.bak 's:gorm.io/driver/sqlite:github.com/qist/sqlite:g' tests_test.go
         # GORM master may declare 'go 1.24.0' (with patch), which older toolchains reject.
         # Normalize the go directive to the major.minor format required by the matrix version.
