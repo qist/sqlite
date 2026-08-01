@@ -1,6 +1,6 @@
 module github.com/qist/sqlite
 
-go 1.18
+go 1.21
 
 require (
 	github.com/glebarez/go-sqlite v1.21.2
