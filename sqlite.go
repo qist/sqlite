@@ -58,6 +58,15 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 			return err
 		}
 		db.ConnPool = conn
+		// SQLite is file-/memory-bound and does not support concurrent writers.
+		// Limit the pool to a single connection so that:
+		//   - in-memory databases (":memory:") remain visible across the whole
+		//     session (each new connection would otherwise get an isolated DB), and
+		//   - statements like UPDATE ... RETURNING don't hit SQLITE_BUSY from a
+		//     second pooled connection holding the write lock.
+		if sqlDB, ok := db.ConnPool.(*sql.DB); ok {
+			sqlDB.SetMaxOpenConns(1)
+		}
 	}
 
 	var version string
