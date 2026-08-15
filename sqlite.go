@@ -58,14 +58,19 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 			return err
 		}
 		db.ConnPool = conn
-		// SQLite is file-/memory-bound and does not support concurrent writers.
-		// Limit the pool to a single connection so that:
-		//   - in-memory databases (":memory:") remain visible across the whole
-		//     session (each new connection would otherwise get an isolated DB), and
-		//   - statements like UPDATE ... RETURNING don't hit SQLITE_BUSY from a
-		//     second pooled connection holding the write lock.
+		// SQLite allows multiple connections but only one writer at a time.
+		// Without a busy timeout, concurrent writers fail immediately with
+		// SQLITE_BUSY (e.g. UPDATE ... RETURNING in the GORM test suite) and
+		// GORM's LRU background goroutine can deadlock a single-connection pool.
+		// Use busy_timeout + WAL so contended writes block-and-retry instead of
+		// erroring, while keeping the pool concurrent (no SetMaxOpenConns(1)).
 		if sqlDB, ok := db.ConnPool.(*sql.DB); ok {
-			sqlDB.SetMaxOpenConns(1)
+			if _, err := sqlDB.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+				return err
+			}
+			if _, err := sqlDB.Exec("PRAGMA journal_mode = WAL"); err != nil {
+				return err
+			}
 		}
 	}
 
