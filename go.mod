@@ -3,7 +3,7 @@ module github.com/qist/sqlite
 go 1.25.0
 
 require (
-	github.com/glebarez/go-sqlite v1.22.0
+	github.com/glebarez/go-sqlite v1.23.0
 	gorm.io/gorm v1.31.2
 	modernc.org/sqlite v1.56.0
 )
