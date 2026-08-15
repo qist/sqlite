@@ -22,6 +22,7 @@ func parseAllColumns(in string) ([]string, error) {
 	state := parseAllColumnsState_NONE
 	quote := rune(0)
 	name := make([]rune, 0)
+parseLoop:
 	for i := 0; i < len(s); i++ {
 		switch state {
 		case parseAllColumnsState_NONE:
@@ -95,7 +96,7 @@ func parseAllColumns(in string) ([]string, error) {
 			}
 			return nil, fmt.Errorf("unexpected token: %s", string(s[i]))
 		case parseAllColumnsState_State_End:
-			break
+			break parseLoop
 		}
 	}
 	if state != parseAllColumnsState_State_End {

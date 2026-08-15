@@ -47,6 +47,11 @@ jobs:
         go mod tidy
         cat go.mod
 
+    - name: Build (sqlite driver)
+      working-directory: ./sqlite
+      shell: bash
+      run: go build ./... && go vet ./...
+
     - name: run gorm tests
       working-directory: ./gorm/tests
       shell: bash
