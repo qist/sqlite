@@ -67,14 +67,29 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
 -  Extra SQLite capabilities exposed via package-level helpers (no GORM API
    changes required), backed by modernc.org/sqlite:
    - **Custom SQL functions** — `sqlite.RegisterScalarFunction` /
-     `sqlite.RegisterDeterministicScalarFunction`
+     `sqlite.RegisterDeterministicScalarFunction` /
+     `sqlite.RegisterFunction` (scalar, aggregate, and window functions)
+   - **Custom collations** — `sqlite.RegisterCollationUtf8`
    - **Per-connection hooks** (e.g. to set `PRAGMA`s uniformly) —
      `sqlite.RegisterConnectionHook`
+   - **Commit / rollback / pre-update hooks** — per-connection, via
+     `sqlite.HookRegisterer` through `(*sql.Conn).Raw`
    - **Custom page cache** — `sqlite.RegisterPageCache` (must be called before
      the first connection)
    - **Virtual tables** — `sqlite.RegisterVirtualTable` (pure-Go `vtab` modules)
    - **sqlite-vec vector search** — available out of the box via the `vec0`
      virtual table and `vec_*` SQL functions (no extra setup)
+   - **Online backup / restore** — `sqlite.NewBackup` / `sqlite.NewRestore`
+     for hot backups between databases
+   - **Per-connection runtime stats** — `sqlite.DBStatus` interface (cache
+     hit/miss/write, lookaside, deferred FKs, etc.)
+   - **File control** — `sqlite.FileControl` interface (`PersistWAL`,
+     `DataVersion`)
+   - **Runtime limits** — `sqlite.Limit` (sqlite3_limit)
+   - **Column metadata** — `sqlite.QueryColumnInfo` (name, declared type,
+     source database/table/column)
+   - **Custom connector** — `sqlite.NewConnector` for `sql.OpenDB` without
+     process-global `sql.Register`
 
 # Releases
 - Latest: **v1.14.0**

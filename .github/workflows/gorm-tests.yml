@@ -4,11 +4,16 @@ on:
   push:
   pull_request:
 
+# Cancel in-progress runs on the same branch when new commits arrive.
+concurrency:
+  group: gorm-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # Label of the container job
   gorm-test:
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
+      fail-fast: true
       matrix:
         go: ['1.26', '1.25']
         platform: [ubuntu-latest, macos-latest, windows-latest]
@@ -20,43 +25,61 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
         check-latest: true
+        cache: false   # manual cache below covers both repos
+
     - run: go version
 
     - name: Check out this repo
-      uses: actions/checkout@v7
+      uses: actions/checkout@v5
       with:
         path: sqlite
 
     - name: Check out GORM repo
-      uses: actions/checkout@v7
+      uses: actions/checkout@v5
       with:
         repository: go-gorm/gorm
         path: gorm
 
-    - name: patch gorm test to use this repo as SQLite driver
+    # Cache both the driver's and GORM's module downloads in a single
+    # composite cache key. Falls back to a partial restore when the
+    # go.sum hasn't been seen yet.
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+          ~/Library/Caches/go-build
+        key: ${{ matrix.platform }}-go-${{ matrix.go }}-${{ hashFiles('sqlite/go.sum', 'gorm/tests/go.sum') }}
+        restore-keys: |
+          ${{ matrix.platform }}-go-${{ matrix.go }}-
+
+    - name: Patch GORM test to use this repo as SQLite driver
       working-directory: ./gorm/tests
       shell: bash
-      # note portable syntax of sed (both GNU and BSD version work with -i.bak cheat, see https://stackoverflow.com/a/44864004
-      # the sqlite checkout is at ../sqlite (one level up from gorm/tests)
+      # Portable sed syntax (works on both GNU and BSD/macOS, see
+      # https://stackoverflow.com/a/44864004). The sqlite checkout is
+      # at ../../sqlite (two levels up from gorm/tests).
       run: |
         sed -i.bak '/gorm.io\/driver\/sqlite/d' go.mod
         echo "replace github.com/qist/sqlite => ../../sqlite/" >> go.mod
         sed -i.bak 's:gorm.io/driver/sqlite:github.com/qist/sqlite:g' tests_test.go
-        # GORM master may declare 'go 1.24.0' (with patch), which older toolchains reject.
-        # Normalize the go directive to the major.minor format required by the matrix version.
+        # GORM master may declare 'go 1.24.0' (with patch), which older
+        # toolchains reject. Normalize to major.minor for the matrix version.
         sed -i.bak -E "s/^go [0-9]+\.[0-9]+\.[0-9]+$/go ${{ matrix.go }}/" go.mod
         go mod tidy
         cat go.mod
 
-    - name: Build (sqlite driver)
+    - name: Build & vet (sqlite driver)
       working-directory: ./sqlite
       shell: bash
       run: go build ./... && go vet ./...
 
-    - name: run gorm tests
+    - name: Run GORM tests
       working-directory: ./gorm/tests
       shell: bash
-      # GORM's master test suite can be flaky under -race on CI runners, so retry.
+      # Retry up to 3 times: GORM's master test suite can be flaky
+      # under -race on CI runners (especially Windows/macOS).
       run: |
         set -o pipefail
         OUT="tests-${{ matrix.platform }}-${{ matrix.go }}.out"
@@ -70,15 +93,16 @@ jobs:
         done
         exit 1
 
-    - name: view failed tests result
+    - name: Show failed tests
       if: ${{ failure() }}
       working-directory: ./gorm/tests
       shell: bash
       run: grep -E '^--- FAIL' tests-${{ matrix.platform }}-${{ matrix.go }}.out || true
 
-    - name: save tests results
+    - name: Upload test results
       if: ${{ always() }}
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v4
       with:
         name: tests-${{ matrix.platform }}-${{ matrix.go }}
         path: ./gorm/tests/tests-${{ matrix.platform }}-${{ matrix.go }}.out
+        if-no-files-found: ignore

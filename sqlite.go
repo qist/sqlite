@@ -18,6 +18,46 @@ import (
 	"gorm.io/gorm/schema"
 )
 
+// addTimeFormatParam appends DSN parameters to modernc.org/sqlite so it
+// matches the behaviour of glebarez/go-sqlite (which GORM's test suite
+// was originally written against):
+//   - _time_format=sqlite: write time values as parseTimeFormats[0]
+//     ("2006-01-02 15:04:05.999999999-07:00") instead of t.String().
+//   - _texttotime=1: report time.Time as the ScanType for TEXT columns
+//     declared as DATE/DATETIME/TIME/TIMESTAMP, so GORM prepares
+//     *time.Time scan targets instead of *string (preventing
+//     convertAssign from re-formatting to RFC3339).
+//   - _busy_timeout=5000: set per-connection busy timeout (not just on
+//     the first connection).
+//   - _journal_mode=wal: enable WAL for read concurrency when multiple
+//     connections are open (needed for GORM's PreparedStmt LRU and
+//     concurrent association appends).
+//
+// If the DSN already sets the respective parameter it is left untouched.
+func addTimeFormatParam(dsn string) string {
+	var params []string
+	if !strings.Contains(dsn, "_time_format=") {
+		params = append(params, "_time_format=sqlite")
+	}
+	if !strings.Contains(dsn, "_texttotime=") {
+		params = append(params, "_texttotime=1")
+	}
+	if !strings.Contains(dsn, "_busy_timeout=") && !strings.Contains(dsn, "_timeout=") {
+		params = append(params, "_busy_timeout=5000")
+	}
+	if !strings.Contains(dsn, "_journal_mode=") && !strings.Contains(dsn, "_journal=") {
+		params = append(params, "_journal_mode=wal")
+	}
+	if len(params) == 0 {
+		return dsn
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + strings.Join(params, "&")
+}
+
 // DriverName is the default driver name for SQLite.
 const DriverName = "sqlite"
 
@@ -53,25 +93,17 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 	if dialector.Conn != nil {
 		db.ConnPool = dialector.Conn
 	} else {
-		conn, err := sql.Open(dialector.DriverName, dialector.DSN)
+		dsn := addTimeFormatParam(dialector.DSN)
+		conn, err := sql.Open(dialector.DriverName, dsn)
 		if err != nil {
 			return err
 		}
 		db.ConnPool = conn
-		// SQLite allows multiple connections but only one writer at a time.
-		// Without a busy timeout, concurrent writers fail immediately with
-		// SQLITE_BUSY (e.g. UPDATE ... RETURNING in the GORM test suite) and
-		// GORM's LRU background goroutine can deadlock a single-connection pool.
-		// Use busy_timeout + WAL so contended writes block-and-retry instead of
-		// erroring, while keeping the pool concurrent (no SetMaxOpenConns(1)).
-		if sqlDB, ok := db.ConnPool.(*sql.DB); ok {
-			if _, err := sqlDB.Exec("PRAGMA busy_timeout = 5000"); err != nil {
-				return err
-			}
-			if _, err := sqlDB.Exec("PRAGMA journal_mode = WAL"); err != nil {
-				return err
-			}
-		}
+		// busy_timeout is set per-connection via the _busy_timeout DSN
+		// parameter (see addTimeFormatParam). The default connection pool
+		// size is left untouched so GORM's PreparedStmt LRU background
+		// goroutine and concurrent association appends don't deadlock on
+		// a single-conn pool.
 	}
 
 	var version string
