@@ -66,8 +66,8 @@ func (m Migrator) HasColumn(value interface{}, name string) bool {
 
 		if name != "" {
 			m.DB.Raw(
-				"SELECT count(*) FROM sqlite_master WHERE type = ? AND tbl_name = ? AND (sql LIKE ? OR sql LIKE ? OR sql LIKE ? OR sql LIKE ? OR sql LIKE ?)",
-				"table", stmt.Table, `%"`+name+`" %`, `%`+name+` %`, "%`"+name+"`%", "%["+name+"]%", "%\t"+name+"\t%",
+				"SELECT count(*) FROM pragma_table_info(?) WHERE name = ? COLLATE NOCASE",
+				stmt.Table, name,
 			).Row().Scan(&count)
 		}
 		return nil
@@ -155,13 +155,15 @@ func (m Migrator) ColumnTypes(value interface{}) ([]gorm.ColumnType, error) {
 }
 
 func (m Migrator) DropColumn(value interface{}, name string) error {
-	return m.recreateTable(value, nil, func(ddl *ddl, stmt *gorm.Statement) (*ddl, []interface{}, error) {
-		if field := stmt.Schema.LookUpField(name); field != nil {
-			name = field.DBName
-		}
+	return m.RunWithoutForeignKey(func() error {
+		return m.recreateTable(value, nil, func(ddl *ddl, stmt *gorm.Statement) (*ddl, []interface{}, error) {
+			if field := stmt.Schema.LookUpField(name); field != nil {
+				name = field.DBName
+			}
 
-		ddl.removeColumn(name)
-		return ddl, nil, nil
+			ddl.removeColumn(name)
+			return ddl, nil, nil
+		})
 	})
 }
 
@@ -339,7 +341,7 @@ func (m Migrator) GetIndexes(value interface{}) ([]gorm.Index, error) {
 	indexes := make([]gorm.Index, 0)
 	err := m.RunWithValue(value, func(stmt *gorm.Statement) error {
 		rst := make([]*Index, 0)
-		if err := m.DB.Debug().Raw("SELECT * FROM PRAGMA_index_list(?)", stmt.Table).Scan(&rst).Error; err != nil { // alias `PRAGMA index_list(?)`
+		if err := m.DB.Raw("SELECT * FROM PRAGMA_index_list(?)", stmt.Table).Scan(&rst).Error; err != nil { // alias `PRAGMA index_list(?)`
 			return err
 		}
 		for _, index := range rst {
@@ -409,6 +411,16 @@ func (m Migrator) recreateTable(
 		columns := createDDL.getColumns()
 		createSQL := createDDL.compile()
 
+		// indexes and triggers are dropped together with the old table; save
+		// their DDL so they can be recreated on the rebuilt table.
+		var auxDDLs []string
+		if err := m.DB.Raw(
+			"SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN (?, ?) AND sql IS NOT NULL",
+			table, "index", "trigger",
+		).Scan(&auxDDLs).Error; err != nil {
+			return err
+		}
+
 		return m.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Exec(createSQL, sqlArgs...).Error; err != nil {
 				return err
@@ -417,10 +429,35 @@ func (m Migrator) recreateTable(
 			queries := []string{
 				fmt.Sprintf("INSERT INTO `%v`(%v) SELECT %v FROM `%v`", newTableName, strings.Join(columns, ","), strings.Join(columns, ","), table),
 				fmt.Sprintf("DROP TABLE `%v`", table),
-				fmt.Sprintf("ALTER TABLE `%v` RENAME TO `%v`", newTableName, table),
 			}
 			for _, query := range queries {
 				if err := tx.Exec(query).Error; err != nil {
+					return err
+				}
+			}
+
+			// legacy_alter_table keeps RENAME from re-resolving views that
+			// reference the table; they point at the original name and become
+			// valid again right after the rename.
+			if err := tx.Exec("PRAGMA legacy_alter_table = ON").Error; err != nil {
+				return err
+			}
+			renameErr := tx.Exec(fmt.Sprintf("ALTER TABLE `%v` RENAME TO `%v`", newTableName, table)).Error
+			if err := tx.Exec("PRAGMA legacy_alter_table = OFF").Error; renameErr == nil {
+				renameErr = err
+			}
+			if renameErr != nil {
+				return renameErr
+			}
+
+			// recreate the saved indexes and triggers; ones referencing a
+			// column that no longer exists cannot apply anymore and are
+			// skipped, any other failure aborts the migration
+			for _, aux := range auxDDLs {
+				if err := tx.Exec(aux).Error; err != nil {
+					if strings.Contains(err.Error(), "no such column") {
+						continue
+					}
 					return err
 				}
 			}

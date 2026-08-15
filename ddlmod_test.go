@@ -143,15 +143,22 @@ func TestParseDDL(t *testing.T) {
 			},
 		},
 		{
-			"index with \n from .schema sqlite",
+			"column name and the column type are separated by a single horizontal tab character",
 			[]string{
-				"CREATE TABLE `test-d` (`field` integer NOT NULL)",
-				"CREATE INDEX `idx_uq`\n    ON `test-b`(`field`) WHERE field = 0",
+				"CREATE TABLE `test-e` (`field1`\ttext NOT NULL,`field2`\tinteger NOT NULL)",
 			},
-			1,
+			2,
 			[]migrator.ColumnType{
 				{
-					NameValue:       sql.NullString{String: "field", Valid: true},
+					NameValue:       sql.NullString{String: "field1", Valid: true},
+					DataTypeValue:   sql.NullString{String: "text", Valid: true},
+					ColumnTypeValue: sql.NullString{String: "text", Valid: true},
+					PrimaryKeyValue: sql.NullBool{Bool: false, Valid: true},
+					UniqueValue:     sql.NullBool{Bool: false, Valid: true},
+					NullableValue:   sql.NullBool{Bool: false, Valid: true},
+				},
+				{
+					NameValue:       sql.NullString{String: "field2", Valid: true},
 					DataTypeValue:   sql.NullString{String: "integer", Valid: true},
 					ColumnTypeValue: sql.NullString{String: "integer", Valid: true},
 					PrimaryKeyValue: sql.NullBool{Bool: false, Valid: true},
@@ -160,6 +167,26 @@ func TestParseDDL(t *testing.T) {
 				},
 			},
 		},
+		{"with a check-like column", []string{"CREATE TABLE Docs (ID int NOT NULL,Checksum text NOT NULL)"}, 2, []migrator.ColumnType{
+			{NameValue: sql.NullString{String: "ID", Valid: true}, DataTypeValue: sql.NullString{String: "int", Valid: true}, ColumnTypeValue: sql.NullString{String: "int", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+			{NameValue: sql.NullString{String: "Checksum", Valid: true}, DataTypeValue: sql.NullString{String: "text", Valid: true}, ColumnTypeValue: sql.NullString{String: "text", Valid: true}, NullableValue: sql.NullBool{Bool: false, Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+		}},
+		{"with a constraint-like column", []string{"CREATE TABLE Docs (ID int NOT NULL,constraints text NOT NULL)"}, 2, []migrator.ColumnType{
+			{NameValue: sql.NullString{String: "ID", Valid: true}, DataTypeValue: sql.NullString{String: "int", Valid: true}, ColumnTypeValue: sql.NullString{String: "int", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+			{NameValue: sql.NullString{String: "constraints", Valid: true}, DataTypeValue: sql.NullString{String: "text", Valid: true}, ColumnTypeValue: sql.NullString{String: "text", Valid: true}, NullableValue: sql.NullBool{Bool: false, Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+		}},
+		{"with a unique-like column", []string{"CREATE TABLE Docs (ID int NOT NULL,unique_code text NOT NULL)"}, 2, []migrator.ColumnType{
+			{NameValue: sql.NullString{String: "ID", Valid: true}, DataTypeValue: sql.NullString{String: "int", Valid: true}, ColumnTypeValue: sql.NullString{String: "int", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+			{NameValue: sql.NullString{String: "unique_code", Valid: true}, DataTypeValue: sql.NullString{String: "text", Valid: true}, ColumnTypeValue: sql.NullString{String: "text", Valid: true}, NullableValue: sql.NullBool{Bool: false, Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+		}},
+		{"with_fk_no_constraint", []string{"CREATE TABLE Docs (ID int NOT NULL,UserID int NOT NULL,FOREIGN KEY (UserID) REFERENCES Users(ID))"}, 3, []migrator.ColumnType{
+			{NameValue: sql.NullString{String: "ID", Valid: true}, DataTypeValue: sql.NullString{String: "int", Valid: true}, ColumnTypeValue: sql.NullString{String: "int", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+			{NameValue: sql.NullString{String: "UserID", Valid: true}, DataTypeValue: sql.NullString{String: "int", Valid: true}, ColumnTypeValue: sql.NullString{String: "int", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+		}},
+		{"with unique without constraint", []string{"CREATE TABLE `users` (`id` text NOT NULL,`email` text NOT NULL,PRIMARY KEY (`id`),UNIQUE (`email`))"}, 4, []migrator.ColumnType{
+			{NameValue: sql.NullString{String: "id", Valid: true}, DataTypeValue: sql.NullString{String: "text", Valid: true}, ColumnTypeValue: sql.NullString{String: "text", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true}, PrimaryKeyValue: sql.NullBool{Valid: true, Bool: true}},
+			{NameValue: sql.NullString{String: "email", Valid: true}, DataTypeValue: sql.NullString{String: "text", Valid: true}, ColumnTypeValue: sql.NullString{String: "text", Valid: true}, NullableValue: sql.NullBool{Valid: true}, DefaultValueValue: sql.NullString{Valid: false}, UniqueValue: sql.NullBool{Valid: true, Bool: true}, PrimaryKeyValue: sql.NullBool{Valid: true}},
+		}},
 	}
 
 	for _, p := range params {
@@ -332,6 +359,41 @@ func TestRemoveConstraint(t *testing.T) {
 			expect:  []string{"`id` integer NOT NULL"},
 		},
 		{
+			name:    "lowercase",
+			fields:  []string{"`id` integer NOT NULL", "constraint `fk_users_notes` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`))"},
+			cName:   "fk_users_notes",
+			success: true,
+			expect:  []string{"`id` integer NOT NULL"},
+		},
+		{
+			name:    "mixed_case",
+			fields:  []string{"`id` integer NOT NULL", "cOnsTraiNT `fk_users_notes` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`))"},
+			cName:   "fk_users_notes",
+			success: true,
+			expect:  []string{"`id` integer NOT NULL"},
+		},
+		{
+			name:    "newline",
+			fields:  []string{"`id` integer NOT NULL", "CONSTRAINT `fk_users_notes`\nFOREIGN KEY (`user_id`) REFERENCES `users`(`id`))"},
+			cName:   "fk_users_notes",
+			success: true,
+			expect:  []string{"`id` integer NOT NULL"},
+		},
+		{
+			name:    "lots_of_newlines",
+			fields:  []string{"`id` integer NOT NULL", "constraint \n    fk_users_notes \n   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`))"},
+			cName:   "fk_users_notes",
+			success: true,
+			expect:  []string{"`id` integer NOT NULL"},
+		},
+		{
+			name:    "no_backtick",
+			fields:  []string{"`id` integer NOT NULL", "CONSTRAINT fk_users_notes FOREIGN KEY (`user_id`) REFERENCES `users`(`id`))"},
+			cName:   "fk_users_notes",
+			success: true,
+			expect:  []string{"`id` integer NOT NULL"},
+		},
+		{
 			name:    "check",
 			fields:  []string{"CONSTRAINT `name_checker` CHECK (`name` <> 'thetadev')", "`id` integer NOT NULL"},
 			cName:   "name_checker",
@@ -369,6 +431,11 @@ func TestGetColumns(t *testing.T) {
 			name:    "with_fk",
 			ddl:     "CREATE TABLE `notes` (`id` integer NOT NULL,`text` varchar(500),`user_id` integer,PRIMARY KEY (`id`),CONSTRAINT `fk_users_notes` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`))",
 			columns: []string{"`id`", "`text`", "`user_id`"},
+		},
+		{
+			name:    "with_unquoted_constraint",
+			ddl:     "CREATE TABLE `notes` (`id` integer NOT NULL,`user_id` integer,CONSTRAINT fk_users_notes FOREIGN KEY (`user_id`) REFERENCES `users`(`id`))",
+			columns: []string{"`id`", "`user_id`"},
 		},
 		{
 			name:    "with_check",
