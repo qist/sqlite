@@ -7,6 +7,7 @@ on:
 jobs:
   # Label of the container job
   gorm-test:
+    timeout-minutes: 30
     strategy:
       matrix:
         go: ['1.26', '1.25']
@@ -60,7 +61,7 @@ jobs:
         set -o pipefail
         OUT="tests-${{ matrix.platform }}-${{ matrix.go }}.out"
         for i in 1 2 3; do
-          if go test -race -v -count=1 ./... 2>&1 | tee "$OUT"; then
+          if go test -race -v -count=1 -timeout 600s ./... 2>&1 | tee "$OUT"; then
             echo "gorm tests passed on attempt $i"
             exit 0
           fi
