@@ -2,7 +2,7 @@
 Pure-go (without cgo) implementation of SQLite driver for [GORM](https://gorm.io/)<br><br>
 This driver has SQLite embedded, you don't need to install one separately.
 
-This is a fork of [github.com/glebarez/sqlite](https://github.com/glebarez/sqlite), kept up to date with the latest pure-Go SQLite releases. The underlying driver is [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure Go, zero cgo).
+This is an independent, pure-Go SQLite driver for GORM. The underlying engine is [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure Go, zero cgo), and it exposes additional capabilities such as custom SQL functions, connection hooks, a pluggable page cache, virtual tables (vtab), and the sqlite-vec vector extension.
 
 # Usage
 
