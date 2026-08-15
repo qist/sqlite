@@ -2,6 +2,8 @@
 Pure-go (without cgo) implementation of SQLite driver for [GORM](https://gorm.io/)<br><br>
 This driver has SQLite embedded, you don't need to install one separately.
 
+This is a fork of [github.com/glebarez/sqlite](https://github.com/glebarez/sqlite), kept up to date with the latest pure-Go SQLite releases.
+
 # Usage
 
 ```go
@@ -51,3 +53,15 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
 ## Included features
 -  JSON1 (https://www.sqlite.org/json1.html)
 -  Math functions (https://www.sqlite.org/lang_mathfunc.html)
+-  Generated (computed) columns via the `generated` tag, e.g.:
+   ```go
+   type Product struct {
+     gorm.Model
+     Price    float64
+     Quantity float64
+     Total    float64 `gorm:"generated:price * quantity"`
+   }
+   ```
+-  Reliable table migrations: constraints (UNIQUE / CHECK / PRIMARY KEY) and
+   generated columns are preserved when GORM rebuilds a table.
+

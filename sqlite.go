@@ -247,13 +247,11 @@ func (dialector Dialector) dataTypeOf(field *schema.Field) string {
 }
 
 func (dialectopr Dialector) SavePoint(tx *gorm.DB, name string) error {
-	tx.Exec("SAVEPOINT " + name)
-	return nil
+	return tx.Exec("SAVEPOINT " + name).Error
 }
 
 func (dialectopr Dialector) RollbackTo(tx *gorm.DB, name string) error {
-	tx.Exec("ROLLBACK TO SAVEPOINT " + name)
-	return nil
+	return tx.Exec("ROLLBACK TO SAVEPOINT " + name).Error
 }
 
 func (dialector Dialector) Translate(err error) error {
