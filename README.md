@@ -2,7 +2,7 @@
 Pure-go (without cgo) implementation of SQLite driver for [GORM](https://gorm.io/)<br><br>
 This driver has SQLite embedded, you don't need to install one separately.
 
-This is a fork of [github.com/glebarez/sqlite](https://github.com/glebarez/sqlite), kept up to date with the latest pure-Go SQLite releases.
+This is a fork of [github.com/glebarez/sqlite](https://github.com/glebarez/sqlite), kept up to date with the latest pure-Go SQLite releases. The underlying driver is [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure Go, zero cgo).
 
 # Usage
 
@@ -64,8 +64,19 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
    ```
 -  Reliable table migrations: constraints (UNIQUE / CHECK / PRIMARY KEY) and
    generated columns are preserved when GORM rebuilds a table.
+-  Extra SQLite capabilities exposed via package-level helpers (no GORM API
+   changes required), backed by modernc.org/sqlite:
+   - **Custom SQL functions** — `sqlite.RegisterScalarFunction` /
+     `sqlite.RegisterDeterministicScalarFunction`
+   - **Per-connection hooks** (e.g. to set `PRAGMA`s uniformly) —
+     `sqlite.RegisterConnectionHook`
+   - **Custom page cache** — `sqlite.RegisterPageCache` (must be called before
+     the first connection)
+   - **Virtual tables** — `sqlite.RegisterVirtualTable` (pure-Go `vtab` modules)
+   - **sqlite-vec vector search** — available out of the box via the `vec0`
+     virtual table and `vec_*` SQL functions (no extra setup)
 
 # Releases
-- Latest: **v1.13.0**
+- Latest: **v1.14.0**
 - Pure-Go SQLite driver for GORM, requires Go **1.25+**.
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	sqlite "github.com/glebarez/go-sqlite"
+	sqlite "modernc.org/sqlite"
 	"gorm.io/gorm"
 )
 
