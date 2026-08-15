@@ -65,3 +65,7 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
 -  Reliable table migrations: constraints (UNIQUE / CHECK / PRIMARY KEY) and
    generated columns are preserved when GORM rebuilds a table.
 
+# Releases
+- Latest: **v1.13.0**
+- Pure-Go SQLite driver for GORM, requires Go **1.25+**.
+
