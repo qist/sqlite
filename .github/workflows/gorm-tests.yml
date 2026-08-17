@@ -44,7 +44,7 @@ jobs:
     # composite cache key. Falls back to a partial restore when the
     # go.sum hasn't been seen yet.
     - name: Cache Go modules
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/go/pkg/mod
