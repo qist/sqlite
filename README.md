@@ -90,8 +90,23 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
      source database/table/column)
    - **Custom connector** — `sqlite.NewConnector` for `sql.OpenDB` without
      process-global `sql.Register`
+   - **Instance-scoped driver** (modernc.org/sqlite ≥ v1.57.0) —
+     `sqlite.NewDriver` + `sqlite.OpenDriver` let you register SQL functions,
+     collations and virtual-table modules on a caller-constructed `*Driver`
+     that is fully isolated from the process-global `sqlite` driver:
+     ```go
+     mine := sqlite.NewDriver()
+     mine.RegisterScalarFunction("hello", 0, func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+         return "world", nil
+     })
+     db, err := sqlite.OpenDriver(mine, "sqlite-mine", "test.db")
+     ```
 
 # Releases
-- Latest: **v1.14.0**
+- Latest: **v1.15.0**
+  - Underlying engine bumped to modernc.org/sqlite **v1.57.0**; new
+    `Driver` instance-level registration (`NewDriver` / `OpenDriver`),
+    `_defensive` DSN option, and more upstream platforms.
+- v1.14.0: pure-Go modernc.org/sqlite engine (no cgo), full feature set.
 - Pure-Go SQLite driver for GORM, requires Go **1.25+**.
 

@@ -84,6 +84,50 @@ type SQLitePreUpdateData = msqlite.SQLitePreUpdateData
 // ColumnInfo describes one output column of a prepared SQL statement.
 type ColumnInfo = msqlite.ColumnInfo
 
+// Driver is a modernc.org/sqlite driver instance. Since upstream v1.57.0 a
+// caller-constructed *Driver can register its own SQL functions, collations
+// and virtual table modules without affecting the process-global "sqlite"
+// driver. The zero value is ready to use; construct one with NewDriver and
+// register it under a unique name via sql.Register (or OpenDriver), so that
+// its functions/modules apply only to connections opened through it.
+//
+//	mine := sqlite.NewDriver()
+//	mine.RegisterScalarFunction("hello", 0, func(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+//	    return "world", nil
+//	})
+//	db, err := sqlite.OpenDriver(mine, "sqlite-mine", "test.db")
+//	// sql.Open("sqlite", ...) connections do NOT see hello().
+type Driver = msqlite.Driver
+
+// NewDriver returns a new *Driver ready to register instance-local SQL
+// functions, collations and virtual table modules. Registrations on it are
+// isolated from the process-global driver and from other Driver instances.
+func NewDriver() *Driver {
+	return &msqlite.Driver{}
+}
+
+// OpenDriver registers d under the given driver name (if it is not already
+// registered) and opens a database on dsn through it. Connections made via the
+// returned *sql.DB only see functions/collations/modules registered on d, not
+// those registered on the process-global driver.
+//
+// Registering under an already-used name is a no-op here (the existing
+// registration wins), matching database/sql's global registry semantics;
+// choose a name unique to your application.
+func OpenDriver(d *Driver, name, dsn string) (*sql.DB, error) {
+	registered := false
+	for _, n := range sql.Drivers() {
+		if n == name {
+			registered = true
+			break
+		}
+	}
+	if !registered {
+		sql.Register(name, d)
+	}
+	return sql.Open(name, dsn)
+}
+
 // BackupConn is the interface satisfied by a *sql.Conn's underlying
 // driver.Conn when using the modernc.org/sqlite driver. It exposes
 // online backup/restore and column introspection. Access it through
@@ -221,6 +265,11 @@ func MustRegisterPageCache(m PageCache) {
 // or computed-source table) with the given *sql.DB. The module is applied to
 // connections opened afterwards. The Module interface comes from
 // modernc.org/sqlite/vtab.
+//
+// Since upstream v1.57.0, if db was opened on a caller-constructed Driver (via
+// OpenDriver), the module is registered on that Driver alone and stays
+// isolated from the process-global driver; a nil db targets the global
+// "sqlite" driver.
 func RegisterVirtualTable(db *sql.DB, name string, m vtab.Module) error {
 	return vtab.RegisterModule(db, name, m)
 }

@@ -676,3 +676,98 @@ func TestNewConnector(t *testing.T) {
 		t.Fatalf("expected 1, got %d", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Driver instance registration (modernc.org/sqlite v1.57.0+)
+// ---------------------------------------------------------------------------
+
+// TestDriverInstanceRegistration verifies that a caller-constructed *Driver
+// can register SQL functions that stay isolated from the process-global
+// "sqlite" driver (upstream v1.57.0 feature).
+func TestDriverInstanceRegistration(t *testing.T) {
+	const fnName = "qist_inst_hello"
+	const drvName = "sqlite-inst-test"
+
+	mine := NewDriver()
+	if err := mine.RegisterScalarFunction(fnName, 0, func(ctx *FunctionContext, args []driver.Value) (driver.Value, error) {
+		return "from instance", nil
+	}); err != nil {
+		t.Fatalf("instance register: %v", err)
+	}
+
+	instDB, err := OpenDriver(mine, drvName, ":memory:")
+	if err != nil {
+		t.Fatalf("open instance db: %v", err)
+	}
+	defer instDB.Close()
+
+	var got string
+	if err := instDB.QueryRow("SELECT " + fnName + "()").Scan(&got); err != nil {
+		t.Fatalf("instance query: %v", err)
+	}
+	if got != "from instance" {
+		t.Fatalf("expected 'from instance', got %q", got)
+	}
+
+	// The same function must NOT be visible on the process-global driver.
+	globalDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open global db: %v", err)
+	}
+	defer globalDB.Close()
+
+	if err := globalDB.QueryRow("SELECT " + fnName + "()").Scan(&got); err == nil {
+		t.Fatalf("expected error calling %s on global driver (instance isolation violated)", fnName)
+	}
+}
+
+// TestDriverInstanceCollation verifies a collation registered on a
+// caller-constructed *Driver is isolated too.
+func TestDriverInstanceCollation(t *testing.T) {
+	const collName = "qist_inst_nocase"
+	const drvName = "sqlite-inst-coll-test"
+
+	mine := NewDriver()
+	if err := mine.RegisterCollationUtf8(collName, func(left, right string) int {
+		switch {
+		case left < right:
+			return -1
+		case left > right:
+			return 1
+		default:
+			return 0
+		}
+	}); err != nil {
+		t.Fatalf("instance collation: %v", err)
+	}
+
+	instDB, err := OpenDriver(mine, drvName, ":memory:")
+	if err != nil {
+		t.Fatalf("open instance db: %v", err)
+	}
+	defer instDB.Close()
+
+	if _, err := instDB.Exec("CREATE TABLE t(v text COLLATE " + collName + ")"); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := instDB.Exec("INSERT INTO t VALUES ('b'), ('a')"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	var vals []string
+	rows, err := instDB.Query("SELECT v FROM t ORDER BY v")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		vals = append(vals, v)
+	}
+	if len(vals) != 2 || vals[0] != "a" || vals[1] != "b" {
+		t.Fatalf("unexpected collation result: %v", vals)
+	}
+}
