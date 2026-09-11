@@ -101,12 +101,23 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
      })
      db, err := sqlite.OpenDriver(mine, "sqlite-mine", "test.db")
      ```
+  - **Linux OFD file locks** — `sqlite.OFDLocking` /
+    `sqlite.OFDLockingEnabled` (modernc.org/sqlite ≥ v1.58.0) switch SQLite
+    from POSIX record locks to Open File Description locks for the database
+    file. OFD locks survive an unrelated `close(2)` of the file in the same
+    process, so a third-party library can no longer silently strip SQLite's
+    transaction locks. Off by default; must be enabled before the first
+    connection is opened. Set the `MODERNC_SQLITE_OFD_LOCK=1` environment
+    variable, or call `sqlite.OFDLocking(true)` from Go (overrides the env).
 
 # Releases
-- Latest: **v1.15.0**
-  - Underlying engine bumped to modernc.org/sqlite **v1.57.0**; new
-    `Driver` instance-level registration (`NewDriver` / `OpenDriver`),
-    `_defensive` DSN option, and more upstream platforms.
+- Latest: **v1.16.0**
+  - Underlying engine bumped to modernc.org/sqlite **v1.58.0**; new Linux
+    **OFD file locks** (`OFDLocking` / `OFDLockingEnabled`), plus SQLite
+    upgraded to 3.53.4 and the v1.56.0 local super-journal patch dropped.
+- v1.15.0: underlying engine modernc.org/sqlite **v1.57.0**; `Driver`
+  instance-level registration (`NewDriver` / `OpenDriver`), `_defensive`
+  DSN option, and more upstream platforms.
 - v1.14.0: pure-Go modernc.org/sqlite engine (no cgo), full feature set.
 - Pure-Go SQLite driver for GORM, requires Go **1.25+**.
 

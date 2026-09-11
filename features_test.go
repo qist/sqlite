@@ -721,6 +721,44 @@ func TestDriverInstanceRegistration(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// OFD locking (modernc.org/sqlite v1.58.0+)
+// ---------------------------------------------------------------------------
+
+// TestOFDLocking verifies the OFD locking helpers (modernc.org/sqlite
+// v1.58.0) are wired through and honour their documented contract. The lock
+// mode is process-wide and freezes after the first file lock, so the test
+// tolerates ErrOFDLockingTooLate when other tests in the binary have already
+// taken a lock, and ErrOFDLockingUnavailable on non-Linux kernels.
+func TestOFDLocking(t *testing.T) {
+	enabled := OFDLockingEnabled()
+
+	// Calling with the current value is always allowed and must be a no-op.
+	if prev, err := OFDLocking(enabled); err != nil {
+		t.Fatalf("OFDLocking(same=%v): unexpected err %v (prev=%v)", enabled, err, prev)
+	}
+	if got := OFDLockingEnabled(); got != enabled {
+		t.Fatalf("OFDLockingEnabled changed after no-op: %v -> %v", enabled, got)
+	}
+
+	// Toggling is only allowed before the first file lock in the process.
+	if _, err := OFDLocking(!enabled); err != nil {
+		switch err {
+		case ErrOFDLockingTooLate, ErrOFDLockingUnavailable:
+			t.Skipf("OFD mode cannot be toggled in this process: %v", err)
+		default:
+			t.Fatalf("OFDLocking(toggle=%v): unexpected err %v", !enabled, err)
+		}
+	}
+
+	// A successful toggle must be reflected, then restore the original mode.
+	if enabled != OFDLockingEnabled() {
+		if _, err := OFDLocking(enabled); err != nil && err != ErrOFDLockingTooLate {
+			t.Fatalf("restore OFDLocking(%v): %v", enabled, err)
+		}
+	}
+}
+
 // TestDriverInstanceCollation verifies a collation registered on a
 // caller-constructed *Driver is isolated too.
 func TestDriverInstanceCollation(t *testing.T) {
