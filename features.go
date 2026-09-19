@@ -21,6 +21,12 @@ import (
 // ---------------------------------------------------------------------------
 
 // FunctionContext is the context user-defined SQL functions execute in.
+//
+// The *FunctionContext passed to FunctionImpl.Scalar and to the
+// AggregateFunction methods is owned by the driver and reused across
+// invocations (modernc.org/sqlite ≥ v1.59.0 hands each invocation a pooled
+// context): it is valid only for the duration of the call it is passed to and
+// must not be retained past its return.
 type FunctionContext = msqlite.FunctionContext
 
 // FunctionImpl describes an application-defined SQL function. If Scalar is set

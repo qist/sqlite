@@ -111,7 +111,13 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
     variable, or call `sqlite.OFDLocking(true)` from Go (overrides the env).
 
 # Releases
-- Latest: **v1.16.1**
+- Latest: **v1.16.2**
+  - Underlying engine bumped to modernc.org/sqlite **v1.59.0** (SQLite 3.53.4,
+    per-call `FunctionContext` handing each invocation its own pooled context,
+    faster transpiled libc). OFD locking coverage extended: on Linux the tests
+    now verify the kernel really holds an OFD lock, on other platforms that the
+    switch reports `ErrOFDLockingUnavailable`.
+- v1.16.1
   - Fix: `TestOFDLocking` skipped on non-Linux CI runners (OFD locks are a
     Linux-only facility; the previous test failed on macOS/Windows).
 - v1.16.0: underlying engine bumped to modernc.org/sqlite **v1.58.0**; new
