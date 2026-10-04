@@ -4,9 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	msqlite "modernc.org/sqlite"
 )
 
 // ---------------------------------------------------------------------------
@@ -814,4 +819,146 @@ func TestDriverInstanceCollation(t *testing.T) {
 	if len(vals) != 2 || vals[0] != "a" || vals[1] != "b" {
 		t.Fatalf("unexpected collation result: %v", vals)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Strict _pragma DSN handling (modernc.org/sqlite v1.60.0+)
+// ---------------------------------------------------------------------------
+
+// TestStrictPragmas verifies the upstream strict _pragma switch is wired
+// through: it is off by default and lets a multi-statement _pragma run, and
+// once enabled it rejects such a DSN in the validation phase, before any
+// statement of it is applied.
+func TestStrictPragmas(t *testing.T) {
+	if StrictPragmasEnabled() {
+		t.Fatal("StrictPragmas is on by default")
+	}
+
+	attach := func(dir string) string {
+		return "foreign_keys(1);ATTACH '" + filepath.Join(dir, "x.db") + "' AS x"
+	}
+	open := func(t *testing.T, dir, pragma string) *sql.DB {
+		t.Helper()
+		v := url.Values{"_pragma": {pragma}}
+		db, err := sql.Open("sqlite", filepath.Join(dir, "a.db")+"?"+v.Encode())
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		t.Cleanup(func() { db.Close() })
+		return db
+	}
+
+	t.Run("off", func(t *testing.T) {
+		dir := t.TempDir()
+		db := open(t, dir, attach(dir))
+		if err := db.Ping(); err != nil {
+			t.Fatalf("ping with StrictPragmas off: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "x.db")); err != nil {
+			t.Fatalf("without StrictPragmas the ATTACH should have run: %v", err)
+		}
+	})
+
+	prev := StrictPragmas(true)
+	if prev {
+		t.Fatal("StrictPragmas(true) reported it was already on")
+	}
+	defer StrictPragmas(prev)
+
+	if !StrictPragmasEnabled() {
+		t.Fatal("StrictPragmasEnabled = false after StrictPragmas(true)")
+	}
+
+	t.Run("rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		// The first statement is valid on its own, so the zero user_version
+		// below proves the whole DSN was rejected before any parameter was
+		// applied, not executed partway.
+		db := open(t, dir, "user_version=7;"+attach(dir))
+		if err := db.Ping(); !errors.Is(err, ErrMultiStatementPragma) {
+			t.Fatalf("got %v, want ErrMultiStatementPragma", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "x.db")); err == nil {
+			t.Fatal("x.db was created")
+		}
+
+		db2, err := sql.Open("sqlite", filepath.Join(dir, "a.db"))
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		defer db2.Close()
+
+		var uv int
+		if err := db2.QueryRow("pragma user_version").Scan(&uv); err != nil {
+			t.Fatalf("query user_version: %v", err)
+		}
+		if uv != 0 {
+			t.Fatalf("user_version = %d, want 0", uv)
+		}
+	})
+
+	t.Run("accepted", func(t *testing.T) {
+		for _, p := range []string{
+			"foreign_keys(1)",
+			"foreign_keys(1);",
+			"foreign_keys(1);;;",
+			"foreign_keys(1); -- trailing comment",
+			"foreign_keys(1); /* trailing comment */",
+			"application_id = 'a;b'",
+		} {
+			dir := t.TempDir()
+			if err := open(t, dir, p).Ping(); err != nil {
+				t.Errorf("_pragma=%q: %v", p, err)
+			}
+		}
+	})
+
+	t.Run("swap", func(t *testing.T) {
+		// StrictPragmas returns the setting previously in effect.
+		if prev := StrictPragmas(false); !prev {
+			t.Fatal("StrictPragmas(false) did not report the setting as on")
+		}
+		if StrictPragmasEnabled() {
+			t.Fatal("StrictPragmasEnabled = true after StrictPragmas(false)")
+		}
+		if prev := StrictPragmas(true); prev {
+			t.Fatal("StrictPragmas(true) did not report the setting as off")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Page cache availability
+// ---------------------------------------------------------------------------
+
+// noopPageCache is a minimal PageCache. Its Create is never reached: the
+// installation itself fails in this package, so no Cache is ever built.
+type noopPageCache struct{}
+
+func (noopPageCache) Create(pageSize, extraSize int, purgeable bool) (msqlite.Cache, error) {
+	return nil, nil
+}
+
+// TestRegisterPageCacheUnavailable pins the documented consequence of the
+// sqlite-vec blank import: vec's init initializes SQLite before user code
+// runs, so when no connection has been opened yet, SQLITE_CONFIG_PCACHE2 is
+// refused with SQLITE_MISUSE (21); once one has been opened, the call is too
+// late anyway. Either way RegisterPageCache cannot install a cache in this
+// package, and MustRegisterPageCache panics on the same error.
+func TestRegisterPageCacheUnavailable(t *testing.T) {
+	err := RegisterPageCache(noopPageCache{})
+	if err == nil {
+		t.Fatal("RegisterPageCache succeeded; the vec blank import should rule it out")
+	}
+	if !errors.Is(err, msqlite.ErrPageCacheTooLate) &&
+		!strings.Contains(err.Error(), "SQLITE_CONFIG_PCACHE2") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("MustRegisterPageCache did not panic")
+		}
+	}()
+	MustRegisterPageCache(noopPageCache{})
 }

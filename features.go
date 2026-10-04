@@ -258,11 +258,21 @@ func RegisterConnectionHook(fn ConnectionHookFn) {
 // RegisterPageCache installs a process-global custom page cache via
 // SQLITE_CONFIG_PCACHE2. It returns an error if called after a connection has
 // already been opened.
+//
+// Note: this package blank-imports modernc.org/sqlite/vec. That package's
+// init installs sqlite-vec with sqlite3_auto_extension, which initializes
+// SQLite before any user code runs, and SQLITE_CONFIG_PCACHE2 is accepted
+// only before SQLite is initialized. RegisterPageCache in this package
+// therefore always fails with SQLITE_MISUSE (21), as upstream documents
+// since v1.60.0. The helper is kept for API compatibility; a program that
+// needs a custom page cache should use modernc.org/sqlite directly, without
+// importing modernc.org/sqlite/vec.
 func RegisterPageCache(m PageCache) error {
 	return msqlite.RegisterPageCache(m)
 }
 
-// MustRegisterPageCache is like RegisterPageCache but panics on error.
+// MustRegisterPageCache is like RegisterPageCache but panics on error. In
+// this package it always panics; see RegisterPageCache for why.
 func MustRegisterPageCache(m PageCache) {
 	msqlite.MustRegisterPageCache(m)
 }
@@ -349,4 +359,43 @@ func QueryColumnInfo(c *sql.Conn, query string) ([]ColumnInfo, error) {
 		return err
 	})
 	return info, err
+}
+
+// ---------------------------------------------------------------------------
+// Strict _pragma DSN handling (modernc.org/sqlite v1.60.0+)
+// ---------------------------------------------------------------------------
+
+// ErrMultiStatementPragma is returned, wrapped, when [StrictPragmas] is in
+// effect and a _pragma DSN value is more than one SQL statement.
+var ErrMultiStatementPragma = msqlite.ErrMultiStatementPragma
+
+// StrictPragmas makes every connection opened afterwards in this process
+// reject a _pragma DSN value that is more than one SQL statement, and returns
+// the setting previously in effect. It is off by default.
+//
+// A _pragma value is run as SQL text with PRAGMA prepended, so without this
+// setting anything after a ';' runs too: "_pragma=foreign_keys(1);ATTACH
+// 'x.db' AS x" also attaches, and creates, x.db. With it, such a DSN fails to
+// open with an error wrapping [ErrMultiStatementPragma], and it fails in the
+// validation phase, before any DSN parameter has been applied. Trailing
+// semicolons, whitespace and comments are still accepted.
+//
+// Enabling it is recommended for any application whose DSN is not a
+// compile-time constant: one read from a configuration file, an environment
+// variable or a command line. It narrows what such a DSN can do to the
+// PRAGMAs it names; it does not make an untrusted DSN safe, because a single
+// PRAGMA can still change the database file, and the file name and the vfs
+// parameter are the DSN's to choose.
+//
+// The switch is process-wide, and deliberately not a DSN parameter: the DSN
+// is what it guards, and whoever can write one could leave the parameter out.
+//
+// StrictPragmas is safe for concurrent use.
+func StrictPragmas(on bool) (prev bool) {
+	return msqlite.StrictPragmas(on)
+}
+
+// StrictPragmasEnabled reports whether [StrictPragmas] is in effect.
+func StrictPragmasEnabled() bool {
+	return msqlite.StrictPragmasEnabled()
 }

@@ -75,7 +75,12 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
    - **Commit / rollback / pre-update hooks** — per-connection, via
      `sqlite.HookRegisterer` through `(*sql.Conn).Raw`
    - **Custom page cache** — `sqlite.RegisterPageCache` (must be called before
-     the first connection)
+     the first connection). Not available in this package: it blank-imports
+     `modernc.org/sqlite/vec`, whose `init` initializes SQLite before user
+     code runs, so the call always fails with `SQLITE_MISUSE` (21), as
+     upstream documents since v1.60.0. The helper is kept for API
+     compatibility; use `modernc.org/sqlite` directly to install a page
+     cache.
    - **Virtual tables** — `sqlite.RegisterVirtualTable` (pure-Go `vtab` modules)
    - **sqlite-vec vector search** — available out of the box via the `vec0`
      virtual table and `vec_*` SQL functions (no extra setup)
@@ -109,9 +114,26 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
     transaction locks. Off by default; must be enabled before the first
     connection is opened. Set the `MODERNC_SQLITE_OFD_LOCK=1` environment
     variable, or call `sqlite.OFDLocking(true)` from Go (overrides the env).
+  - **Strict `_pragma` DSN handling** (modernc.org/sqlite ≥ v1.60.0) —
+    `sqlite.StrictPragmas(true)` / `sqlite.StrictPragmasEnabled` make every
+    connection opened afterwards reject a `_pragma` DSN value that holds more
+    than one SQL statement, with an error wrapping
+    `sqlite.ErrMultiStatementPragma`. The check runs in the validation phase,
+    before any DSN parameter is applied, so a value such as
+    `_pragma=foreign_keys(1);ATTACH 'x.db' AS x` can no longer attach (and
+    create) `x.db`. Recommended for DSNs that are not compile-time constants.
+    Off by default; safe for concurrent use.
 
 # Releases
-- Latest: **v1.16.2**
+- Latest: **v1.16.3**
+  - Underlying engine bumped to modernc.org/sqlite **v1.60.1**; new **strict
+    `_pragma` DSN handling** (`sqlite.StrictPragmas` /
+    `sqlite.StrictPragmasEnabled` / `sqlite.ErrMultiStatementPragma`) rejects
+    multi-statement `_pragma` values in the validation phase, before any DSN
+    parameter is applied. `RegisterPageCache` / `MustRegisterPageCache` are
+    now documented as unavailable in this package, because sqlite-vec is
+    wired in and initializes SQLite at init time (`SQLITE_MISUSE`).
+- v1.16.2
   - Underlying engine bumped to modernc.org/sqlite **v1.59.0** (SQLite 3.53.4,
     per-call `FunctionContext` handing each invocation its own pooled context,
     faster transpiled libc). OFD locking coverage extended: on Linux the tests
