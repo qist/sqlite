@@ -39,8 +39,8 @@ The [standard GORM driver for SQLite](https://github.com/go-gorm/sqlite) has one
 
 ## Is this tested good ?
 Yes, The CI pipeline of this driver employs [whole test base](https://github.com/go-gorm/gorm/tree/master/tests) of GORM, which includes more than **12k** tests. Testing is run against latest major releases of Go:
-- 1.25
 - 1.26
+- 1.27
 
 In following environments:
 - Linux
@@ -125,7 +125,12 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
     Off by default; safe for concurrent use.
 
 # Releases
-- Latest: **v1.16.3**
+- Latest: **v1.16.4**
+  - Fix: `modernc.org/sqlite` v1.60.0+ requires Go **1.26**, so the README
+    requirement is now 1.26+ and the CI matrix tests 1.26/1.27. Go 1.25 cannot
+    build the module: `actions/setup-go` pins `GOTOOLCHAIN=local`, which
+    disables the automatic toolchain download. No library code changes.
+- v1.16.3
   - Underlying engine bumped to modernc.org/sqlite **v1.60.1**; new **strict
     `_pragma` DSN handling** (`sqlite.StrictPragmas` /
     `sqlite.StrictPragmasEnabled` / `sqlite.ErrMultiStatementPragma`) rejects
@@ -149,5 +154,5 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
   instance-level registration (`NewDriver` / `OpenDriver`), `_defensive`
   DSN option, and more upstream platforms.
 - v1.14.0: pure-Go modernc.org/sqlite engine (no cgo), full feature set.
-- Pure-Go SQLite driver for GORM, requires Go **1.25+**.
+- Pure-Go SQLite driver for GORM, requires Go **1.26+**.
 
