@@ -123,9 +123,47 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
     `_pragma=foreign_keys(1);ATTACH 'x.db' AS x` can no longer attach (and
     create) `x.db`. Recommended for DSNs that are not compile-time constants.
     Off by default; safe for concurrent use.
+  - **Per-connection statement authorizer** (modernc.org/sqlite ≥ v1.61.0) —
+    `sqlite.AuthorizerRegisterer` + `sqlite.AuthorizerFn`, the `sqlite.Auth*`
+    action codes and `sqlite.AuthorizerOK` / `AuthorizerDeny` /
+    `AuthorizerIgnore` let a policy allow or deny statement compilation.
+    Install it through `(*sql.Conn).Raw`, or on every pooled connection with
+    `sqlite.RegisterConnectionHook` (its argument is an
+    `sqlite.ExecQuerierContext`):
+    ```go
+    sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, _ string) error {
+        r := conn.(sqlite.AuthorizerRegisterer)
+        return r.RegisterAuthorizer(func(action sqlite.AuthorizerActionCode, a1, a2, db, tv string) sqlite.AuthorizerReturnCode {
+            if action == sqlite.AuthDropTable {
+                return sqlite.AuthorizerDeny
+            }
+            return sqlite.AuthorizerOK
+        })
+    })
+    ```
+    Passing `nil` to `RegisterAuthorizer` removes the policy; a policy
+    installed via `Raw` stays on that physical connection after it is returned
+    to the pool, so prefer the connection hook when every connection must
+    share one policy.
+  - **Time format without the monotonic clock** — the opt-in
+    `_time_format=string_no_monotonic` DSN value (modernc.org/sqlite ≥
+    v1.61.0) writes times in the default layout without Go's ` m=+...`
+    suffix, so a scanned time matches its row again when bound in
+    `WHERE col = ?`. This driver sets `_time_format=sqlite` by default; pass
+    the option explicitly in the DSN to override it.
 
 # Releases
-- Latest: **v1.16.4**
+- Latest: **v1.16.5**
+  - Underlying engine bumped to modernc.org/sqlite **v1.61.1**. Newly exposed:
+    a per-connection statement **authorizer** (`sqlite.AuthorizerRegisterer`,
+    `sqlite.AuthorizerFn`, the `sqlite.Auth*` action codes and
+    `sqlite.AuthorizerOK` / `AuthorizerDeny` / `AuthorizerIgnore`, available
+    since upstream v1.61.0), plus documentation for the opt-in
+    `_time_format=string_no_monotonic` DSN value. Upstream v1.61.0/1.61.1 also
+    bring SQLite **3.54.1**, context-aware `Tx.Commit` / `Rows` lock waits,
+    prepared-statement reuse (no re-planning on each execution), and fixes for
+    panics/aborts reachable through a `vfs.New` file system.
+- v1.16.4
   - Fix: `modernc.org/sqlite` v1.60.0+ requires Go **1.26**, so the README
     requirement is now 1.26+ and the CI matrix tests 1.26/1.27. Go 1.25 cannot
     build the module: `actions/setup-go` pins `GOTOOLCHAIN=local`, which

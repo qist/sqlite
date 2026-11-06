@@ -962,3 +962,62 @@ func TestRegisterPageCacheUnavailable(t *testing.T) {
 	}()
 	MustRegisterPageCache(noopPageCache{})
 }
+
+// ---------------------------------------------------------------------------
+// Statement authorizer (modernc.org/sqlite v1.61.0+)
+// ---------------------------------------------------------------------------
+
+// TestAuthorizer verifies a per-connection authorizer installed through
+// AuthorizerRegisterer can deny statement compilation.
+func TestAuthorizer(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("conn: %v", err)
+	}
+	defer conn.Close()
+
+	var denied []AuthorizerActionCode
+	if err := conn.Raw(func(driverConn any) error {
+		r, ok := driverConn.(AuthorizerRegisterer)
+		if !ok {
+			t.Skip("driver does not support AuthorizerRegisterer")
+		}
+		return r.RegisterAuthorizer(func(action AuthorizerActionCode, arg1, arg2, databaseName, triggerOrView string) AuthorizerReturnCode {
+			if action == AuthCreateTable {
+				denied = append(denied, action)
+				return AuthorizerDeny
+			}
+			return AuthorizerOK
+		})
+	}); err != nil {
+		t.Fatalf("register authorizer: %v", err)
+	}
+
+	// An authorizer stays on the physical connection after it is returned to
+	// the pool, so remove it again to keep this test isolated.
+	defer conn.Raw(func(driverConn any) error {
+		return driverConn.(AuthorizerRegisterer).RegisterAuthorizer(nil)
+	})
+
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE t(v int)"); err == nil {
+		t.Fatal("expected CREATE TABLE to be denied by the authorizer")
+	}
+	if len(denied) == 0 || denied[0] != AuthCreateTable {
+		t.Fatalf("expected an AuthCreateTable callback, got %v", denied)
+	}
+
+	var n int
+	if err := conn.QueryRowContext(ctx, "SELECT 1").Scan(&n); err != nil {
+		t.Fatalf("SELECT should still be allowed: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1, got %d", n)
+	}
+}
