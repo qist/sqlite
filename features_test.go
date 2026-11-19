@@ -1021,3 +1021,77 @@ func TestAuthorizer(t *testing.T) {
 		t.Fatalf("expected 1, got %d", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// fdatasync commits (modernc.org/sqlite v1.62.0+)
+// ---------------------------------------------------------------------------
+
+// TestFdatasync verifies the fdatasync switch is wired through. The setting is
+// process-wide but, unlike OFD locking, may be changed at any time, so the
+// test toggles it and restores the original value. On macOS and Windows the
+// helper reports ErrFdatasyncUnavailable, and the test skips there.
+func TestFdatasync(t *testing.T) {
+	enabled := FdatasyncEnabled()
+
+	// Calling with the current value must report that same value.
+	prev, err := Fdatasync(enabled)
+	if err != nil {
+		if err == ErrFdatasyncUnavailable {
+			t.Skipf("fdatasync unavailable on this platform: %v", err)
+		}
+		t.Fatalf("Fdatasync(same=%v): %v", enabled, err)
+	}
+	if prev != enabled {
+		t.Fatalf("Fdatasync(same=%v) reported prev=%v", enabled, prev)
+	}
+	if got := FdatasyncEnabled(); got != enabled {
+		t.Fatalf("FdatasyncEnabled changed after no-op: %v -> %v", enabled, got)
+	}
+
+	// Toggling takes effect immediately and is reflected by the getter.
+	if _, err := Fdatasync(!enabled); err != nil {
+		t.Fatalf("Fdatasync(toggle=%v): %v", !enabled, err)
+	}
+	if got := FdatasyncEnabled(); got == enabled {
+		t.Fatalf("FdatasyncEnabled = %v after toggling from %v", got, enabled)
+	}
+
+	// Restore the original setting for the rest of the test binary.
+	prev, err = Fdatasync(enabled)
+	if err != nil {
+		t.Fatalf("restore Fdatasync(%v): %v", enabled, err)
+	}
+	if prev == enabled {
+		t.Fatalf("restore Fdatasync(%v) reported prev=%v", enabled, prev)
+	}
+	if got := FdatasyncEnabled(); got != enabled {
+		t.Fatalf("FdatasyncEnabled = %v after restore, want %v", got, enabled)
+	}
+
+	// A commit still works with fdatasync enabled.
+	if _, err := Fdatasync(true); err != nil {
+		t.Fatalf("enable fdatasync: %v", err)
+	}
+	defer Fdatasync(enabled)
+
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "fdatasync.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec("CREATE TABLE t(v int)"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO t VALUES (42)"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	var v int
+	if err := db.QueryRow("SELECT v FROM t").Scan(&v); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if v != 42 {
+		t.Fatalf("expected 42, got %d", v)
+	}
+}

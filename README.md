@@ -151,9 +151,27 @@ Well, it's slower than CGo implementation, but not terribly. See the [bechmark o
     suffix, so a scanned time matches its row again when bound in
     `WHERE col = ?`. This driver sets `_time_format=sqlite` by default; pass
     the option explicitly in the DSN to override it.
+  - **`fdatasync(2)` commits** (modernc.org/sqlite ≥ v1.62.0) —
+    `sqlite.Fdatasync(true)` makes every commit sync with `fdatasync` instead
+    of `fsync`, process-wide, returning the previous setting;
+    `sqlite.FdatasyncEnabled` reports it. `fdatasync` skips the timestamp
+    update `fsync` forces through the journal on file systems such as ext4,
+    so a commit can take half the time with the same durability. Off by
+    default; may be changed at any time and affects open connections. Honored
+    on Linux, FreeBSD, illumos and NetBSD; on macOS and Windows it returns
+    `sqlite.ErrFdatasyncUnavailable`.
 
 # Releases
-- Latest: **v1.16.5**
+- Latest: **v1.16.6**
+  - Underlying engine bumped to modernc.org/sqlite **v1.62.0** (SQLite 3.54.1,
+    `modernc.org/libc` v1.80.1, now also built and tested on **illumos/amd64**).
+    Newly exposed: **`fdatasync(2)` commits** —
+    `sqlite.Fdatasync` / `sqlite.FdatasyncEnabled` /
+    `sqlite.ErrFdatasyncUnavailable` (upstream v1.62.0) switch the commit
+    syscall from `fsync` to `fdatasync`, which can halve commit latency on
+    journaling file systems. Upstream also made `Limit` work through a
+    `driver.Connector` wrapper that provides `Unwrap() driver.Conn`.
+- v1.16.5
   - Underlying engine bumped to modernc.org/sqlite **v1.61.1**. Newly exposed:
     a per-connection statement **authorizer** (`sqlite.AuthorizerRegisterer`,
     `sqlite.AuthorizerFn`, the `sqlite.Auth*` action codes and
